@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useMemo } from "react";
 import {
   Alert,
-  ActivityIndicator,
   Image,
   Platform,
   SafeAreaView,
@@ -30,7 +29,6 @@ const PALETTE = [
 export default function App() {
   const [image, setImage] = useState(null);
   const [result, setResult] = useState(null);
-  const [isUploading, setIsUploading] = useState(false);
   const [servingCount, setServingCount] = useState(1);
   const [tags, setTags] = useState("");
 
@@ -66,10 +64,6 @@ export default function App() {
   };
 
   const uploadPhoto = async (uri) => {
-    setIsUploading(true);
-    setResult(null);
-    setServingCount(1);
-    setTags("");
     const formData = new FormData();
     const filename = uri.split("/").pop();
     const match = /\.(\w+)$/.exec(filename ?? "");
@@ -138,32 +132,11 @@ export default function App() {
     return { calories, protein, carbs, fat };
   }, [result]);
 
-  const totalsForServings = useMemo(() => {
-    return {
-      calories: totals.calories * servingCount,
-      protein: totals.protein * servingCount,
-      carbs: totals.carbs * servingCount,
-      fat: totals.fat * servingCount,
-    };
-  }, [servingCount, totals]);
-
-  const formatTotalMacro = (value) => {
-    if (value === undefined || value === null) {
-      return "--";
-    }
-    const numeric = typeof value === "number" ? value : Number(value);
-    if (Number.isNaN(numeric)) {
-      return "--";
-    }
-    return `${numeric.toFixed(1)}g`;
-  };
-
   const resetSession = () => {
     setResult(null);
     setImage(null);
     setTags("");
     setServingCount(1);
-    setIsUploading(false);
   };
 
   const renderPlaceholder = () => (
@@ -174,14 +147,7 @@ export default function App() {
           Snap a photo of your meal and let the AI break it down.
         </Text>
       </View>
-      <TouchableOpacity
-        style={[
-          styles.primaryButton,
-          isUploading && styles.primaryButtonDisabled,
-        ]}
-        onPress={takePhoto}
-        disabled={isUploading}
-      >
+      <TouchableOpacity style={styles.primaryButton} onPress={takePhoto}>
         <Feather name="camera" size={20} color="#fff" />
         <Text style={styles.primaryButtonText}>Take Photo</Text>
       </TouchableOpacity>
@@ -189,12 +155,6 @@ export default function App() {
         <View style={styles.previewContainer}>
           <Text style={styles.previewLabel}>Latest Photo</Text>
           <Image source={{ uri: image }} style={styles.previewImage} />
-        </View>
-      ) : null}
-      {isUploading ? (
-        <View style={styles.loadingRow}>
-          <ActivityIndicator size="small" color="#22B8A6" />
-          <Text style={styles.loadingText}>Processing photo…</Text>
         </View>
       ) : null}
     </View>
@@ -207,16 +167,18 @@ export default function App() {
       confidenceValue > 1 ? confidenceValue : confidenceValue * 100
     );
 
-    const formatMacro = (value, unit = "g") => {
-      if (value === undefined || value === null) {
-        return "--";
-      }
-      const numeric = typeof value === "number" ? value : Number(value);
-      if (Number.isNaN(numeric)) {
-        return "--";
-      }
-      return `${numeric.toFixed(1)}${unit}`;
-    };
+    const protein =
+      ingredient.protein_g !== undefined
+        ? `${ingredient.protein_g.toFixed(1)}g`
+        : "--";
+    const carbs =
+      ingredient.carbs_g !== undefined
+        ? `${ingredient.carbs_g.toFixed(1)}g`
+        : "--";
+    const fat =
+      ingredient.fat_g !== undefined
+        ? `${ingredient.fat_g.toFixed(1)}g`
+        : "--";
 
     return (
       <View key={`${ingredient.name}-${index}`} style={styles.ingredientCard}>
@@ -238,21 +200,15 @@ export default function App() {
         <View style={styles.macrosRow}>
           <View style={[styles.macroPill, styles.proteinPill]}>
             <Text style={styles.macroLabel}>Protein</Text>
-            <Text style={styles.macroValue}>
-              {formatMacro(ingredient.protein_g)}
-            </Text>
+            <Text style={styles.macroValue}>{protein}</Text>
           </View>
           <View style={[styles.macroPill, styles.carbsPill]}>
             <Text style={styles.macroLabel}>Carbs</Text>
-            <Text style={styles.macroValue}>
-              {formatMacro(ingredient.carbs_g)}
-            </Text>
+            <Text style={styles.macroValue}>{carbs}</Text>
           </View>
           <View style={[styles.macroPill, styles.fatPill]}>
             <Text style={styles.macroLabel}>Fat</Text>
-            <Text style={styles.macroValue}>
-              {formatMacro(ingredient.fat_g)}
-            </Text>
+            <Text style={styles.macroValue}>{fat}</Text>
           </View>
         </View>
 
@@ -291,11 +247,7 @@ export default function App() {
         {image ? (
           <View style={styles.heroImageWrapper}>
             <Image source={{ uri: image }} style={styles.heroImage} />
-            <TouchableOpacity
-              style={[styles.retakeButton, isUploading && styles.retakeButtonDisabled]}
-              onPress={takePhoto}
-              disabled={isUploading}
-            >
+            <TouchableOpacity style={styles.retakeButton} onPress={takePhoto}>
               <Feather name="camera" size={16} color="#22B8A6" />
               <Text style={styles.retakeText}>Retake</Text>
             </TouchableOpacity>
@@ -305,28 +257,26 @@ export default function App() {
         <View style={styles.totalCard}>
           <Text style={styles.totalCardTitle}>Total Nutrition</Text>
           <View style={styles.totalCaloriesRow}>
-            <Text style={styles.totalCaloriesValue}>
-              {Math.round(totalsForServings.calories)}
-            </Text>
+            <Text style={styles.totalCaloriesValue}>{Math.round(totals.calories)}</Text>
             <Text style={styles.totalCaloriesUnit}>kcal</Text>
           </View>
           <View style={styles.totalMacrosRow}>
             <View>
               <Text style={styles.totalMacroLabel}>Protein</Text>
               <Text style={styles.totalMacroValue}>
-                {formatTotalMacro(totalsForServings.protein)}
+                {totals.protein ? totals.protein.toFixed(1) : "--"}g
               </Text>
             </View>
             <View>
               <Text style={styles.totalMacroLabel}>Carbs</Text>
               <Text style={styles.totalMacroValue}>
-                {formatTotalMacro(totalsForServings.carbs)}
+                {totals.carbs ? totals.carbs.toFixed(1) : "--"}g
               </Text>
             </View>
             <View>
               <Text style={styles.totalMacroLabel}>Fat</Text>
               <Text style={styles.totalMacroValue}>
-                {formatTotalMacro(totalsForServings.fat)}
+                {totals.fat ? totals.fat.toFixed(1) : "--"}g
               </Text>
             </View>
           </View>
@@ -424,16 +374,7 @@ export default function App() {
     <SafeAreaView style={styles.safeArea}>
       <StatusBar barStyle="dark-content" />
       <View style={styles.appContainer}>
-        {result ? (
-          renderResult()
-        ) : isUploading ? (
-          <View style={styles.processingWrapper}>
-            <ActivityIndicator size="large" color="#22B8A6" />
-            <Text style={styles.processingText}>Analyzing your meal…</Text>
-          </View>
-        ) : (
-          renderPlaceholder()
-        )}
+        {result ? renderResult() : renderPlaceholder()}
       </View>
     </SafeAreaView>
   );
@@ -467,16 +408,6 @@ const styles = StyleSheet.create({
     color: "#4B5563",
     lineHeight: 22,
   },
-  loadingRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    marginTop: 20,
-  },
-  loadingText: {
-    color: "#4B5563",
-    fontSize: 14,
-  },
   primaryButton: {
     height: 56,
     borderRadius: 16,
@@ -486,9 +417,6 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     gap: 8,
     paddingHorizontal: 20,
-  },
-  primaryButtonDisabled: {
-    opacity: 0.7,
   },
   primaryButtonText: {
     color: "#fff",
@@ -508,18 +436,6 @@ const styles = StyleSheet.create({
     width: 220,
     height: 220,
     borderRadius: 20,
-  },
-  processingWrapper: {
-    flex: 1,
-    backgroundColor: "#F7FAF9",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 12,
-    padding: 24,
-  },
-  processingText: {
-    fontSize: 16,
-    color: "#374151",
   },
   resultWrapper: {
     flex: 1,
@@ -577,9 +493,7 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     borderRadius: 16,
   },
-  retakeButtonDisabled: {
-    opacity: 0.6,
-  },
+
   retakeText: {
     color: "#22B8A6",
     fontWeight: "600",
