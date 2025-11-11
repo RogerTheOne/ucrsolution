@@ -15,7 +15,7 @@ import {
 import * as ImagePicker from "expo-image-picker";
 import { Feather } from "@expo/vector-icons";
 
-const SERVER_URL = "https://famous-views-matter.loca.lt"; // replace with your Flask server URL
+const SERVER_URL = "https://famous-views-matter.loca.lt"; 
 
 const PALETTE = [
   "#22B8A6",
@@ -31,9 +31,11 @@ export default function App() {
   const [result, setResult] = useState(null);
   const [servingCount, setServingCount] = useState(1);
   const [tags, setTags] = useState("");
+  const [isUploading, setIsUploading] = useState(false);
 
   useEffect(() => {
     (async () => {
+      
       if (Platform.OS !== "web") {
         const { status } = await ImagePicker.requestCameraPermissionsAsync();
         if (status !== "granted") {
@@ -48,9 +50,16 @@ export default function App() {
 
   const takePhoto = async () => {
     try {
-      const pickerResult = await ImagePicker.launchCameraAsync({
-        quality: 1,
-      });
+     
+      const pickerResult =
+        Platform.OS === "web"
+          ? await ImagePicker.launchImageLibraryAsync({
+              mediaTypes: ImagePicker.MediaTypeOptions.Images,
+              quality: 1,
+            })
+          : await ImagePicker.launchCameraAsync({
+              quality: 1,
+            });
 
       if (!pickerResult.canceled) {
         const uri = pickerResult.assets[0].uri;
@@ -58,41 +67,79 @@ export default function App() {
         uploadPhoto(uri);
       }
     } catch (error) {
-      Alert.alert("Error", "Cannot open camera: " + error.message);
+      Alert.alert("Error", "Cannot open camera / picker: " + error.message);
       console.log(error);
     }
   };
 
   const uploadPhoto = async (uri) => {
     const formData = new FormData();
-    const filename = uri.split("/").pop();
-    const match = /\.(\w+)$/.exec(filename ?? "");
-    const type = match ? `image/${match[1]}` : "image";
-
-    formData.append("photo", {
-      uri,
-      name: filename,
-      type,
-    });
+    const filename = uri.split("/").pop() || "photo.jpg";
 
     try {
+      setIsUploading(true);
+      console.log("[uploadPhoto] start upload, uri =", uri);
+
+      if (Platform.OS === "web") {
+        
+        const res = await fetch(uri);
+        const blob = await res.blob();
+        console.log("[uploadPhoto] got blob from uri:", blob);
+        formData.append("photo", blob, filename);
+      } else {
+       
+        const match = /\.(\w+)$/.exec(filename || "");
+        const type = match ? `image/${match[1]}` : "image/jpeg";
+
+        formData.append("photo", {
+          uri,
+          name: filename,
+          type,
+        });
+      }
+
+      console.log("[uploadPhoto] sending POST to", `${SERVER_URL}/upload`);
+
       const response = await fetch(`${SERVER_URL}/upload`, {
         method: "POST",
         body: formData,
-        headers: {
-          "Content-Type": "multipart/form-data",
-        },
+        
       });
 
+      console.log("[uploadPhoto] response status:", response.status);
+
       if (!response.ok) {
+        const text = await response.text().catch(() => "");
+        console.log("[uploadPhoto] response not ok, body:", text);
         throw new Error(`Server responded with ${response.status}`);
       }
 
-      const data = await response.json();
-      setResult(data.result ?? data);
+      const contentType = response.headers.get("content-type") || "";
+      let data;
+      if (contentType.includes("application/json")) {
+        data = await response.json();
+      } else {
+        const text = await response.text();
+        console.log("[uploadPhoto] non-json response text:", text);
+        try {
+          data = JSON.parse(text);
+        } catch (e) {
+          data = { raw: text };
+        }
+      }
+
+      console.log("[uploadPhoto] parsed data from server:", data);
+
+      const finalResult = data.result ?? data;
+      setResult(finalResult);
+      console.log("[uploadPhoto] setResult done");
     } catch (error) {
-      Alert.alert("Upload Failed", error.message);
-      console.log(error);
+      console.log("[uploadPhoto] error:", error);
+      if (Platform.OS !== "web") {
+        Alert.alert("Upload Failed", error.message || "Unknown error");
+      } else {
+        window.alert("Upload Failed: " + (error.message || "Unknown error"));
+      }
     } finally {
       setIsUploading(false);
     }
@@ -147,9 +194,15 @@ export default function App() {
           Snap a photo of your meal and let the AI break it down.
         </Text>
       </View>
-      <TouchableOpacity style={styles.primaryButton} onPress={takePhoto}>
+      <TouchableOpacity
+        style={styles.primaryButton}
+        onPress={takePhoto}
+        disabled={isUploading}
+      >
         <Feather name="camera" size={20} color="#fff" />
-        <Text style={styles.primaryButtonText}>Take Photo</Text>
+        <Text style={styles.primaryButtonText}>
+          {Platform.OS === "web" ? "Upload Photo" : "Take Photo"}
+        </Text>
       </TouchableOpacity>
       {image ? (
         <View style={styles.previewContainer}>
@@ -221,7 +274,10 @@ export default function App() {
             <View
               style={[
                 styles.confidenceBarFill,
-                { width: `${Math.min(confidencePercent, 100)}%`, backgroundColor: color },
+                {
+                  width: `${Math.min(confidencePercent, 100)}%`,
+                  backgroundColor: color,
+                },
               ]}
             />
           </View>
@@ -249,7 +305,9 @@ export default function App() {
             <Image source={{ uri: image }} style={styles.heroImage} />
             <TouchableOpacity style={styles.retakeButton} onPress={takePhoto}>
               <Feather name="camera" size={16} color="#22B8A6" />
-              <Text style={styles.retakeText}>Retake</Text>
+              <Text style={styles.retakeText}>
+                {Platform.OS === "web" ? "Change Photo" : "Retake"}
+              </Text>
             </TouchableOpacity>
           </View>
         ) : null}
@@ -257,7 +315,9 @@ export default function App() {
         <View style={styles.totalCard}>
           <Text style={styles.totalCardTitle}>Total Nutrition</Text>
           <View style={styles.totalCaloriesRow}>
-            <Text style={styles.totalCaloriesValue}>{Math.round(totals.calories)}</Text>
+            <Text style={styles.totalCaloriesValue}>
+              {Math.round(totals.calories)}
+            </Text>
             <Text style={styles.totalCaloriesUnit}>kcal</Text>
           </View>
           <View style={styles.totalMacrosRow}>
@@ -360,11 +420,21 @@ export default function App() {
             Tap ingredients to view detailed micronutrients.
           </Text>
         </View>
+
+        {/* Debug 区块：用来查看后端返回的原始 result */}
+        <View style={[styles.infoCard, { marginTop: 12 }]}>
+          <Text style={styles.infoText}>
+            Raw result (debug):{"\n"}
+            {JSON.stringify(result, null, 2)}
+          </Text>
+        </View>
       </ScrollView>
 
       <View style={styles.bottomBar}>
-        <TouchableOpacity style={styles.primaryButton}>
-          <Text style={styles.primaryButtonText}>Save Meal</Text>
+        <TouchableOpacity style={styles.primaryButton} disabled={isUploading}>
+          <Text style={styles.primaryButtonText}>
+            {isUploading ? "Uploading..." : "Save Meal"}
+          </Text>
         </TouchableOpacity>
       </View>
     </View>
@@ -379,6 +449,8 @@ export default function App() {
     </SafeAreaView>
   );
 }
+
+
 
 const styles = StyleSheet.create({
   safeArea: {
@@ -493,7 +565,6 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     borderRadius: 16,
   },
-
   retakeText: {
     color: "#22B8A6",
     fontWeight: "600",
