@@ -84,11 +84,17 @@ export default function App() {
         },
       });
 
+      if (!response.ok) {
+        throw new Error(`Server responded with ${response.status}`);
+      }
+
       const data = await response.json();
-      setResult(data.result);
+      setResult(data.result ?? data);
     } catch (error) {
       Alert.alert("Upload Failed", error.message);
       console.log(error);
+    } finally {
+      setIsUploading(false);
     }
   };
 
@@ -487,6 +493,7 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     borderRadius: 16,
   },
+
   retakeText: {
     color: "#22B8A6",
     fontWeight: "600",
